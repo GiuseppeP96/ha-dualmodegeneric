@@ -288,6 +288,7 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         self.dryer_entity_id = dryer_entity_id
         self.dryer_behavior = dryer_behavior
         self.consent_entity_id = consent_entity_id
+        # When no consent entity is configured, consent is always granted
         self._consent_granted = consent_entity_id is None
 
         # Tell Home Assistant that this integration is migrated
