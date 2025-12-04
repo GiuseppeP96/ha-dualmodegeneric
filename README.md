@@ -89,7 +89,7 @@ Refer to the [Generic Thermostat documentation](https://www.home-assistant.io/co
   if necessary. Note that these are assumed to be exclusively for the use of the thermostat - 
   the thermostat will report its mode and change its behaviour based on the position of these switches.
 
-* `consent_entity` works as an additional consent to the thermostat. It could be used for example in combination with a calendar entity in order to schedule on and off time avoiding to use an automation for this. It will keep the previous mode.
+* `consent_entity`is an optional entity (e.g., `binary_sensor`, `input_boolean`, or `calendar`) that acts as an additional control for the thermostat. When the entity is in the "on" state (or equivalent, such as `true` for calendars), the thermostat operates normally. When the entity is "off" or unavailable, all devices controlled by the thermostat (heater, cooler, dryer, fan) are turned off, but the thermostat retains its previous HVAC mode setting ("keep previous mode"). This allows you to schedule thermostat operation using calendar entities or other logic, without needing separate automations.
 
 
 ## Reporting an Issue
