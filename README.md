@@ -89,7 +89,7 @@ Refer to the [Generic Thermostat documentation](https://www.home-assistant.io/co
   if necessary. Note that these are assumed to be exclusively for the use of the thermostat - 
   the thermostat will report its mode and change its behaviour based on the position of these switches.
 
-* `consent_entity` works as an additional consent to the thermostat. It could be used for example in combination with a calendar entity in order to schedule on and off time avoiding to use an automation for this. It will keep previous mode
+* `consent_entity` works as an additional consent to the thermostat. It could be used for example in combination with a calendar entity in order to schedule on and off time avoiding to use an automation for this. It will keep the previous mode.
 
 
 ## Reporting an Issue
