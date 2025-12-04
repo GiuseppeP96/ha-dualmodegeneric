@@ -826,10 +826,11 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         new_state = event.data.get("new_state")
         previous = self._consent_granted
         self._consent_granted = self._extract_consent_from_state(new_state)
-        if not self._consent_granted:
-            await self._async_turn_off_all_devices()
         if previous != self._consent_granted:
-            await self._async_control_heating(force=True)
+            if not self._consent_granted:
+                await self._async_turn_off_all_devices()
+            else:
+                await self._async_control_heating(force=True)
         self.async_write_ha_state()
 
     async def _async_control_heating(self, time=None, force=False, previous_mode: HVACMode=None):
