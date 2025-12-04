@@ -202,8 +202,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     enable_heat_cool = config.get(CONF_ENABLE_HEAT_COOL)
     unit = hass.config.units.temperature_unit
     unique_id = config.get(CONF_UNIQUE_ID)
-    consent_entity_id = config.get(CONF_CONSENT_ENTITY)
     humidity_sensor_entity_id = config.get(CONF_HUMIDITY_SENSOR)
+    consent_entity_id = config.get(CONF_CONSENT_ENTITY)
 
     async_add_entities(
         [
@@ -235,8 +235,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
                 enable_heat_cool,
                 unit,
                 unique_id,
-                consent_entity_id,
                 humidity_sensor_entity_id,
+                consent_entity_id,
             )
         ]
     )
@@ -274,8 +274,8 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
             enable_heat_cool,
             unit,
             unique_id,
-            consent_entity_id,
             humidity_sensor_entity_id,
+            consent_entity_id,
     ):
         """Initialize the thermostat."""
         self._name = name
@@ -283,11 +283,12 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         self.cooler_entity_id = cooler_entity_id
         self.sensor_entity_id = sensor_entity_id
         self.humidity_sensor_entity_id = humidity_sensor_entity_id
-        self.consent_entity_id = consent_entity_id
         self.fan_entity_id = fan_entity_id
         self.fan_behavior = fan_behavior
         self.dryer_entity_id = dryer_entity_id
         self.dryer_behavior = dryer_behavior
+        self.consent_entity_id = consent_entity_id
+        self._consent_granted = consent_entity_id is None
 
         # Tell Home Assistant that this integration is migrated
         self._enable_turn_on_off_backwards_compatibility = False
@@ -364,7 +365,6 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         self._away_temp_heater = away_temp_heater
         self._away_temp_cooler = away_temp_cooler
         self._is_away = False
-        self._consent_prev_hvac_mode = None
 
     def register_event_listener(self, entity_id: str, func: Callable[[Event[EventStateChangedData]], Any]):
         """Adds a listener with a Callable if the entity is defined"""
@@ -381,13 +381,19 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         # Sensors
         self.register_event_listener(self.sensor_entity_id, self._async_sensor_changed)
         self.register_event_listener(self.humidity_sensor_entity_id, self._async_humidity_sensor_changed)
-        self.register_event_listener(self.consent_entity_id, self._async_consent_changed)
 
         # Switches
         self.register_event_listener(self.heater_entity_id, self._async_switch_changed)
         self.register_event_listener(self.cooler_entity_id, self._async_switch_changed)
         self.register_event_listener(self.fan_entity_id, self._async_switch_changed)
         self.register_event_listener(self.dryer_entity_id, self._async_switch_changed)
+        self.register_event_listener(self.consent_entity_id, self._async_consent_entity_changed)
+
+        if self.consent_entity_id:
+            consent_state = self.hass.states.get(self.consent_entity_id)
+            self._consent_granted = self._extract_consent_from_state(consent_state)
+            if not self._consent_granted:
+                await self._async_turn_off_all_devices()
 
         if self._keep_alive:
             self.async_on_remove(
@@ -543,6 +549,8 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         """
         if self._hvac_mode == HVAC_MODE_OFF:
             return CURRENT_HVAC_OFF
+        if not self._consent_granted:
+            return CURRENT_HVAC_IDLE
         if not self._is_device_active:
             return CURRENT_HVAC_IDLE
         elif self._hvac_mode == HVAC_MODE_COOL:
@@ -781,43 +789,7 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         self._async_update_humidity(new_state)
         await self._async_control_heating()
         self.async_write_ha_state()
-    
-    @callback
-    async def _async_consent_changed(self, event: Event[EventStateChangedData]):
-        """Handle consent entity changes (on/off) - if off, thermostat will stop and devices turned off.
-        When consent is restored, the thermostat will attempt to restore the previous HVAC mode."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            consent = False
-        else:
-            consent = new_state.state == STATE_ON
 
-        if not consent:
-            # Save previous mode so we can restore it later (but only if it's not OFF)
-            if self._hvac_mode != HVAC_MODE_OFF:
-                self._consent_prev_hvac_mode = self._hvac_mode
-            # Ensure devices are turned off
-            if self._is_device_active:
-                _LOGGER.info("Consent entity %s is off - turning off heating/cooling devices", self.consent_entity_id)
-                await self._async_heater_turn_off()
-                await self._async_cooler_turn_off()
-                await self._async_fan_turn_off()
-                await self._async_dryer_turn_off()
-            # Reflect that thermostat is effectively off while consent denied
-            self._hvac_mode = HVAC_MODE_OFF
-        else:
-            # Consent granted: restore previous hvac mode if we saved one
-            if getattr(self, "_consent_prev_hvac_mode", None):
-                prev = self._consent_prev_hvac_mode
-                self._consent_prev_hvac_mode = None
-                _LOGGER.info("Consent entity %s is ON - restoring previous HVAC mode: %s", self.consent_entity_id, prev)
-                await self.async_set_hvac_mode(prev)
-            else:
-                # No previous mode saved — just re-evaluate control which may turn devices on if needed
-                await self._async_control_heating()
-
-        self.async_write_ha_state()
-    
     @callback
     def _async_switch_changed(self, event: Event[EventStateChangedData]):
         """Handle heater switch state changes."""
@@ -841,6 +813,24 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         except ValueError as ex:
             _LOGGER.error("Unable to update from sensor: %s", ex)
 
+    def _extract_consent_from_state(self, state):
+        """Return True if the consent entity grants permission."""
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return False
+        return state.state == STATE_ON
+
+    @callback
+    async def _async_consent_entity_changed(self, event: Event[EventStateChangedData]):
+        """Handle consent entity state changes."""
+        new_state = event.data.get("new_state")
+        previous = self._consent_granted
+        self._consent_granted = self._extract_consent_from_state(new_state)
+        if not self._consent_granted:
+            await self._async_turn_off_all_devices()
+        if previous != self._consent_granted:
+            await self._async_control_heating(force=True)
+        self.async_write_ha_state()
+
     async def _async_control_heating(self, time=None, force=False, previous_mode: HVACMode=None):
         """Check if we need to turn heating on or off."""
         async with self._temp_lock:
@@ -856,19 +846,12 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
                         self._target_temp_high
                     )
 
-            # Consent entity check: if defined and not ON, ensure devices are off and do not activate
-            if getattr(self, "consent_entity_id", None):
-                consent_on = self.hass.states.is_state(self.consent_entity_id, STATE_ON)
-                if not consent_on:
-                    if self._is_device_active:
-                        _LOGGER.info("Consent entity %s is not ON - turning off all devices", self.consent_entity_id)
-                        await self._async_heater_turn_off()
-                        await self._async_cooler_turn_off()
-                        await self._async_fan_turn_off()
-                        await self._async_dryer_turn_off()
-                    return
-
             if not self._active or self._hvac_mode == HVAC_MODE_OFF:
+                return
+
+            if not self._consent_granted:
+                if self._is_device_active:
+                    await self._async_turn_off_all_devices()
                 return
 
             # This check sets the active entity outside of the checks below to make it available for keep-alive logic
@@ -1168,3 +1151,10 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
             await self._async_control_heating(force=True)
 
         self.async_write_ha_state()
+
+    async def _async_turn_off_all_devices(self):
+        """Turn off all controlled devices (heater, cooler, fan, dryer)."""
+        await self._async_heater_turn_off()
+        await self._async_cooler_turn_off()
+        await self._async_fan_turn_off()
+        await self._async_dryer_turn_off()
