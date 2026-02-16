@@ -563,12 +563,23 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         elif self._hvac_mode == HVAC_MODE_DRY:
             return CURRENT_HVAC_DRY
         elif self._hvac_mode == HVAC_MODE_HEAT_COOL:
-            if self.hass.states.is_state(self.heater_entity_id, STATE_ON):
-                return CURRENT_HVAC_HEAT
-            elif self.hass.states.is_state(self.cooler_entity_id, STATE_ON):
-                return CURRENT_HVAC_COOL
+            # Check if heater and cooler are the same entity (reverse cycle)
+            if self.heater_entity_id == self.cooler_entity_id:
+                # For reverse cycle, determine action based on current temperature
+                if self._cur_temp >= self._target_temp_high + self._hot_tolerance:
+                    return CURRENT_HVAC_COOL
+                elif self._cur_temp <= self._target_temp_low - self._cold_tolerance:
+                    return CURRENT_HVAC_HEAT
+                else:
+                    return CURRENT_HVAC_IDLE
             else:
-                return CURRENT_HVAC_IDLE
+                # Original logic for separate heater/cooler
+                if self.hass.states.is_state(self.heater_entity_id, STATE_ON):
+                    return CURRENT_HVAC_HEAT
+                elif self.hass.states.is_state(self.cooler_entity_id, STATE_ON):
+                    return CURRENT_HVAC_COOL
+                else:
+                    return CURRENT_HVAC_IDLE
         else:
             return CURRENT_HVAC_IDLE
 
