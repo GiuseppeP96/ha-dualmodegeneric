@@ -40,6 +40,7 @@ climate:
     hot_tolerance: 0.4
     min_cycle_duration:
         minutes: 20
+    consent_entity: calendar.schedule_time
 ```
 
 ### Possible values for *_behavior
@@ -87,6 +88,8 @@ Refer to the [Generic Thermostat documentation](https://www.home-assistant.io/co
 * While `heater`/`cooler`/`dryer`/`fan` are documented to be `switch`es, they can also be `input_boolean`s 
   if necessary. Note that these are assumed to be exclusively for the use of the thermostat - 
   the thermostat will report its mode and change its behaviour based on the position of these switches.
+
+* `consent_entity`is an optional entity (e.g., `binary_sensor`, `input_boolean`, or `calendar`) that acts as an additional control for the thermostat. When the entity is in the "on" state (or equivalent, such as `true` for calendars), the thermostat operates normally. When the entity is "off" or unavailable, all devices controlled by the thermostat (heater, cooler, dryer, fan) are turned off, but the thermostat retains its previous HVAC mode setting ("keep previous mode"). This allows you to schedule thermostat operation using calendar entities or other logic, without needing separate automations.
 
 
 ## Reporting an Issue
