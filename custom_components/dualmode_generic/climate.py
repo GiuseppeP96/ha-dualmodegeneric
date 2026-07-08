@@ -266,6 +266,82 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     )
 
 
+async def async_setup_entry(hass, config_entry, async_add_entities):
+    """Set up the dual mode generic thermostat from a config entry (UI-based)."""
+    # Merge data and options — options take priority for fields that can be changed
+    config = {**config_entry.data, **config_entry.options}
+
+    unit = hass.config.units.temperature_unit
+
+    # Parse duration fields from dict format (DurationSelector returns {"hours":0,"minutes":5,"seconds":0})
+    def parse_duration(value):
+        """Convert duration dict or timedelta to timedelta, or None."""
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            import datetime
+            return datetime.timedelta(
+                hours=value.get("hours", 0),
+                minutes=value.get("minutes", 0),
+                seconds=value.get("seconds", 0),
+            )
+        return value
+
+    # Parse precision from string to float
+    def parse_precision(value):
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+
+    min_cycle_duration = parse_duration(config.get("min_cycle_duration"))
+    keep_alive = parse_duration(config.get("keep_alive"))
+
+    async_add_entities(
+        [
+            DualModeGenericThermostat(
+                config.get("name", "Generic Thermostat"),
+                config.get("heater"),
+                config.get("cooler"),
+                config.get("target_sensor"),
+                config.get("fan"),
+                config.get("fan_behavior", "neutral"),
+                config.get("dryer"),
+                config.get("dryer_behavior", "neutral"),
+                config.get("reverse_cycle", []),
+                config.get("min_temp"),
+                config.get("max_temp"),
+                config.get("target_temp"),
+                config.get("target_temp_high"),
+                config.get("target_temp_low"),
+                min_cycle_duration,
+                config.get("cold_tolerance", 0.3),
+                config.get("hot_tolerance", 0.3),
+                keep_alive,
+                config.get("initial_hvac_mode"),
+                config.get("away_temp"),
+                config.get("away_temp_heater"),
+                config.get("away_temp_cooler"),
+                parse_precision(config.get("precision")),
+                parse_precision(config.get("target_temp_step")),
+                config.get("enable_heat_cool", False),
+                unit,
+                config.get("unique_id"),
+                config.get("target_humidity_sensor"),
+                config.get("consent_entity"),
+                config.get("water_sensor"),
+                config.get("water_setpoint_heat"),
+                config.get("water_setpoint_cool"),
+                config.get("water_setpoint_heat_entity"),
+                config.get("water_setpoint_cool_entity"),
+                config.get("water_tolerance", 0.3),
+            )
+        ]
+    )
+
+
 class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
     """Representation of a Generic Thermostat device."""
 
